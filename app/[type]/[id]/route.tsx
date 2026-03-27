@@ -111,7 +111,7 @@ const parseNonNegativeInt = (value?: string | null, max = Number.MAX_SAFE_INTEGE
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return Math.min(max, Math.floor(parsed));
 };
-const FINAL_IMAGE_RENDERER_CACHE_VERSION = 'poster-backdrop-logo-thumbnail-v37';
+const FINAL_IMAGE_RENDERER_CACHE_VERSION = 'poster-backdrop-logo-thumbnail-v40';
 const TMDB_CACHE_TTL_MS = parseCacheTtlMs(
   process.env.ERDB_TMDB_CACHE_TTL_MS,
   3 * 24 * 60 * 60 * 1000,
@@ -2843,6 +2843,7 @@ const renderWithSharp = async (
         align?: 'left' | 'center' | 'right';
         splitAcrossHalves?: boolean;
         spreadAcrossThirds?: boolean;
+        preserveBadgeSize?: boolean;
       }
     ) => {
       if (rowBadges.length === 0) return;
@@ -2877,7 +2878,7 @@ const renderWithSharp = async (
         rowEntries.reduce((acc, entry) => acc + entry.badgeWidth, 0) +
         Math.max(0, rowEntries.length - 1) * rowGap;
       let rowWidth = measureCurrentRowWidth();
-      if (rowWidth > effectiveMaxWidth && rowEntries.length > 1 && rowGap > 0) {
+      if (!options?.preserveBadgeSize && rowWidth > effectiveMaxWidth && rowEntries.length > 1 && rowGap > 0) {
         const shrinkPerGap = Math.min(
           rowGap,
           Math.max(1, Math.ceil((rowWidth - effectiveMaxWidth) / (rowEntries.length - 1)))
@@ -2885,7 +2886,7 @@ const renderWithSharp = async (
         rowGap = Math.max(0, rowGap - shrinkPerGap);
         rowWidth = measureCurrentRowWidth();
       }
-      if (rowWidth > effectiveMaxWidth) {
+      if (!options?.preserveBadgeSize && rowWidth > effectiveMaxWidth) {
         let overflow = rowWidth - effectiveMaxWidth;
         let guard = 0;
         while (overflow > 0 && guard < rowEntries.length * 8) {
@@ -3336,7 +3337,10 @@ const renderWithSharp = async (
           input.outputHeight +
           Math.max(0, Math.floor((input.logoBadgeBandHeight - rowsTotalHeight) / 2));
         for (const row of rows) {
-          composeBadgeRow(row, rowY, { maxRowWidth: input.logoBadgeMaxWidth });
+          composeBadgeRow(row, rowY, {
+            maxRowWidth: input.logoBadgeMaxWidth,
+            preserveBadgeSize: true,
+          });
           rowY += badgeHeight + input.badgeGap;
         }
       }
@@ -5304,7 +5308,7 @@ export async function GET(
         ? (typeof posterRatingLimit === 'number' ? ratingBadges.slice(0, posterRatingLimit) : [...ratingBadges])
         : useBackdropBadgeLayout
           ? [...ratingBadges]
-          : ratingBadges.slice(0, 6);
+          : [...ratingBadges];
       const backdropRows =
         useBackdropBadgeLayout && !useBackdropVerticalLayout ? chunkBy(cappedRatingBadges, 3) : [];
       let posterBadgeGroups = splitPosterBadgesByLayout(
@@ -5422,11 +5426,11 @@ export async function GET(
         badgeTopOffset = 24;
         badgeBottomOffset = 24;
       } else if (useLogoBadgeLayout) {
-        badgeIconSize = 80;
-        badgeFontSize = 60;
-        badgePaddingY = 20;
-        badgePaddingX = 32;
-        badgeGap = 18;
+        badgeIconSize = 92;
+        badgeFontSize = 68;
+        badgePaddingY = 24;
+        badgePaddingX = 38;
+        badgeGap = 22;
       }
 
       if (usePosterBadgeLayout && cappedRatingBadges.length > 0) {
@@ -5635,22 +5639,20 @@ export async function GET(
       const badgesForIcons = cappedRatingBadges;
       const logoNaturalWidth = useLogoBadgeLayout ? outputWidth : 0;
       const finalOutputWidth = useLogoBadgeLayout && logoBadgeRowWidth > 0
-        ? Math.min(LOGO_MAX_WIDTH, Math.max(logoNaturalWidth, logoBadgeRowWidth + 72))
+        ? Math.max(logoNaturalWidth, logoBadgeRowWidth + 72)
         : outputWidth;
-      const logoImageWidth = useLogoBadgeLayout ? logoNaturalWidth : 0;
-      const logoImageHeight = useLogoBadgeLayout ? outputHeight : 0;
+      const logoImageWidth = useLogoBadgeLayout
+        ? logoNaturalWidth
+        : 0;
+      const logoImageHeight = useLogoBadgeLayout
+        ? outputHeight
+        : 0;
       const logoBadgesPerRow = useLogoBadgeLayout ? Math.max(1, cappedRatingBadges.length) : 0;
       const logoBadgeRows = useLogoBadgeLayout && cappedRatingBadges.length > 0 ? 1 : 0;
       const logoBadgeItemHeight = badgeIconSize + badgePaddingY * 2;
       const estimatedLogoWidth = logoImageWidth;
       const logoBadgeContainerMaxWidth = Math.max(0, finalOutputWidth - 24);
-      const logoBadgeMaxWidth = Math.min(
-        logoBadgeContainerMaxWidth,
-        Math.max(
-          Math.min(520, logoBadgeContainerMaxWidth),
-          Math.max(Math.round(estimatedLogoWidth * 1.18), logoBadgeRowWidth + 24)
-        )
-      );
+      const logoBadgeMaxWidth = logoBadgeContainerMaxWidth;
       const logoBadgeBandHeight = useLogoBadgeLayout && cappedRatingBadges.length > 0
         ? Math.max(170, logoBadgeRows * logoBadgeItemHeight + Math.max(0, logoBadgeRows - 1) * badgeGap + 68)
         : 0;
