@@ -12,11 +12,24 @@ const getPublicRequestUrl = (request: NextRequest) => {
   const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host');
   if (!forwardedHost) return request.nextUrl;
   const protoHeader = request.headers.get('x-forwarded-proto');
+  const forwardedPort = request.headers.get('x-forwarded-port')?.split(',')[0].trim();
   const proto = (protoHeader?.split(',')[0].trim() || request.nextUrl.protocol.replace(':', '')).toLowerCase();
-  const host = forwardedHost.split(',')[0].trim();
+  const hostValue = forwardedHost.split(',')[0].trim();
   const url = new URL(request.nextUrl.toString());
   url.protocol = `${proto}:`;
-  url.host = host;
+  if (forwardedPort) {
+    const hostname = hostValue.replace(/:\d+$/, '');
+    const isDefaultPort =
+      (proto === 'https' && forwardedPort === '443') ||
+      (proto === 'http' && forwardedPort === '80');
+    url.host = isDefaultPort ? hostname : `${hostname}:${forwardedPort}`;
+  } else {
+    const shouldStripPort =
+      (proto === 'https' && /:443$/.test(hostValue)) ||
+      (proto === 'http' && /:80$/.test(hostValue)) ||
+      (proto === 'https' && /:7860$/.test(hostValue));
+    url.host = shouldStripPort ? hostValue.replace(/:\d+$/, '') : hostValue;
+  }
   return url;
 };
 
