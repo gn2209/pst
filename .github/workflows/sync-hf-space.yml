@@ -3,18 +3,30 @@ name: Sync della repo sullo Space HF
 env:
   HF_USERNAME: gon229
   HF_SPACE: pst
-  
+
 on:
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 3 * * *"   # ogni giorno alle 3:00 UTC
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
       - name: Request Factory Rebuild
         run: |
-          curl -X POST \
+          echo "Riavvio Space: $HF_USERNAME/$HF_SPACE"
+
+          response=$(curl -s -w "%{http_code}" -o response.json -X POST \
             -H "Authorization: Bearer ${{ secrets.HF_TOKEN }}" \
-            "https://huggingface.co/api/spaces/HF_USERNAME/HF_SPACE/restart?factory=true"
+            "https://huggingface.co/api/spaces/$HF_USERNAME/$HF_SPACE/restart?factory=true")
+
+          echo "HTTP Status: $response"
+          echo "Response body:"
+          cat response.json
+
+          if [ "$response" -ne 200 ]; then
+            echo "Errore nel rebuild dello Space"
+            exit 1
+          fi
