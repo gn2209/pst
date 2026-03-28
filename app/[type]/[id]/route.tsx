@@ -3703,6 +3703,10 @@ export async function GET(
   const globalRatings = request.nextUrl.searchParams.get('ratings');
   const posterRatings = request.nextUrl.searchParams.get('posterRatings') ?? globalRatings;
   const backdropRatings = request.nextUrl.searchParams.get('backdropRatings') ?? globalRatings;
+  const thumbnailRatings =
+    request.nextUrl.searchParams.get('thumbnailRatings') ??
+    request.nextUrl.searchParams.get('backdropRatings') ??
+    globalRatings;
   const logoRatings = request.nextUrl.searchParams.get('logoRatings') ?? globalRatings;
   const imageTextParam =
     request.nextUrl.searchParams.get('imageText') || request.nextUrl.searchParams.get('posterText');
@@ -3824,8 +3828,10 @@ export async function GET(
   const ratingsForType =
     imageType === 'poster'
       ? posterRatings
-      : imageType === 'backdrop' || imageType === 'thumbnail'
+      : imageType === 'backdrop'
         ? backdropRatings
+        : imageType === 'thumbnail'
+          ? thumbnailRatings
         : logoRatings;
   const thumbnailSupportedRatings = new Set<RatingPreference>(['tmdb', 'imdb']);
   const requestedRatingPreferences =

@@ -17,12 +17,13 @@ const ERDB_TYPE_OPTIONAL_PARAMS = {
   poster: ['posterStreamBadges', 'posterQualityBadgesStyle', 'posterRatings'],
   backdrop: ['backdropStreamBadges', 'backdropQualityBadgesStyle', 'backdropRatings'],
   logo: ['logoRatings'],
-  thumbnail: ['backdropStreamBadges', 'backdropQualityBadgesStyle', 'backdropRatings'],
+  thumbnail: ['backdropStreamBadges', 'backdropQualityBadgesStyle', 'thumbnailRatings'],
 } as const;
 const ERDB_OPTIONAL_PARAM_KEYS = [
   ...ERDB_OPTIONAL_PARAMS,
   ...ERDB_TYPE_OPTIONAL_PARAMS.poster,
   ...ERDB_TYPE_OPTIONAL_PARAMS.backdrop,
+  ...ERDB_TYPE_OPTIONAL_PARAMS.thumbnail,
   ...ERDB_TYPE_OPTIONAL_PARAMS.logo,
 ];
 
@@ -75,6 +76,7 @@ export type ProxyConfig = {
   ratings?: string;
   posterRatings?: string;
   backdropRatings?: string;
+  thumbnailRatings?: string;
   logoRatings?: string;
   lang?: string;
   streamBadges?: string;
@@ -108,6 +110,7 @@ const PROXY_OPTIONAL_STRING_KEYS = [
   'ratings',
   'posterRatings',
   'backdropRatings',
+  'thumbnailRatings',
   'logoRatings',
   'simklClientId',
   'lang',

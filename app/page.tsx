@@ -204,6 +204,7 @@ const buildAiometadataPattern = (options: {
   lang: string;
   posterRatings: string;
   backdropRatings: string;
+  thumbnailRatings: string;
   logoRatings: string;
   posterStreamBadges: StreamBadgesSetting;
   backdropStreamBadges: StreamBadgesSetting;
@@ -234,6 +235,7 @@ const buildAiometadataPattern = (options: {
     lang,
     posterRatings,
     backdropRatings,
+    thumbnailRatings,
     logoRatings,
     posterStreamBadges,
     backdropStreamBadges,
@@ -301,7 +303,7 @@ const buildAiometadataPattern = (options: {
     params.push(['imageText', backdropImageText]);
     params.push(['backdropRatingsLayout', backdropRatingsLayout]);
   } else if (imageType === 'thumbnail') {
-    params.push(['backdropRatings', backdropRatings]);
+    params.push(['thumbnailRatings', thumbnailRatings]);
     params.push(['ratingStyle', backdropRatingStyle]);
     params.push(['thumbnailRatingsLayout', thumbnailRatingsLayout]);
     params.push(['thumbnailSize', thumbnailSize]);
@@ -370,6 +372,7 @@ const buildAiometadataPatternBlock = (options: {
     pushIfString('streamBadges');
     pushIfString('posterStreamBadges');
     pushIfString('backdropStreamBadges');
+    pushIfString('thumbnailRatings');
   }
 
   if (options.imageType === 'poster') {
@@ -396,7 +399,7 @@ const buildAiometadataPatternBlock = (options: {
     }
     pushIfString(options.imageType === 'thumbnail' ? 'thumbnailRatingsLayout' : 'backdropRatingsLayout');
     if (options.imageType === 'thumbnail') {
-      const thumbnailRatings = filterThumbnailRatings(config.backdropRatings ?? config.ratings);
+      const thumbnailRatings = filterThumbnailRatings(config.thumbnailRatings ?? config.ratings);
       if (thumbnailRatings) {
         params.push(['ratings', thumbnailRatings]);
       }
@@ -445,10 +448,20 @@ export default function Home() {
   const [backdropImageText, setBackdropImageText] = useState<'original' | 'clean' | 'alternative'>('clean');
   const [posterRatingRows, setPosterRatingRows] = useState<RatingProviderRow[]>(buildDefaultRatingRows);
   const [backdropRatingRows, setBackdropRatingRows] = useState<RatingProviderRow[]>(buildDefaultRatingRows);
+  const [thumbnailRatingRows, setThumbnailRatingRows] = useState<RatingProviderRow[]>(
+    enabledOrderedToRows(THUMBNAIL_SUPPORTED_RATINGS)
+  );
   const [logoRatingRows, setLogoRatingRows] = useState<RatingProviderRow[]>(buildDefaultRatingRows);
 
   const posterRatingPreferences = useMemo(() => rowsToEnabledOrdered(posterRatingRows), [posterRatingRows]);
   const backdropRatingPreferences = useMemo(() => rowsToEnabledOrdered(backdropRatingRows), [backdropRatingRows]);
+  const thumbnailRatingPreferences = useMemo(
+    () =>
+      rowsToEnabledOrdered(thumbnailRatingRows).filter((rating): rating is RatingPreference =>
+        THUMBNAIL_SUPPORTED_RATINGS.includes(rating)
+      ),
+    [thumbnailRatingRows]
+  );
   const logoRatingPreferences = useMemo(() => rowsToEnabledOrdered(logoRatingRows), [logoRatingRows]);
   const [posterStreamBadges, setPosterStreamBadges] = useState<StreamBadgesSetting>('auto');
   const [backdropStreamBadges, setBackdropStreamBadges] = useState<StreamBadgesSetting>('auto');
@@ -666,20 +679,20 @@ simklClientId (OPTIONAL)| Your SIMKL client_id for direct SIMKL ratings         
 --- PER-TYPE SETTINGS ---
 poster   -> ratingStyle = cfg.posterRatingStyle, imageText = cfg.posterImageText
 backdrop -> ratingStyle = cfg.backdropRatingStyle, imageText = cfg.backdropImageText
-thumbnail -> ratingStyle = cfg.backdropRatingStyle, thumbnailRatingsLayout = cfg.thumbnailRatingsLayout, thumbnailSize = cfg.thumbnailSize, ratings = TMDB/IMDb episode ratings only
+thumbnail -> ratingStyle = cfg.backdropRatingStyle, thumbnailRatingsLayout = cfg.thumbnailRatingsLayout, thumbnailSize = cfg.thumbnailSize, ratings = cfg.thumbnailRatings ?? cfg.ratings filtered to TMDB/IMDb
 logo     -> ratingStyle = cfg.logoRatingStyle (omit imageText)
-Ratings providers can be set per-type via cfg.posterRatings / cfg.backdropRatings / cfg.logoRatings (fallback to cfg.ratings). Thumbnail ratings are episode-level and currently support TMDB + IMDb only.
+Ratings providers can be set per-type via cfg.posterRatings / cfg.backdropRatings / cfg.thumbnailRatings / cfg.logoRatings (fallback to cfg.ratings). Thumbnail ratings are episode-level and currently support TMDB + IMDb only.
 Quality badges style can be set per-type via cfg.posterQualityBadgesStyle / cfg.backdropQualityBadgesStyle (fallback to cfg.qualityBadgesStyle).
 
 --- URL BUILD ---
 const typeRatingStyle = type === 'poster' ? cfg.posterRatingStyle : type === 'backdrop' ? cfg.backdropRatingStyle : cfg.logoRatingStyle;
 const typeImageText = type === 'backdrop' ? cfg.backdropImageText : cfg.posterImageText;
-\${cfg.baseUrl}/\${type}/\${id}.jpg?tmdbKey=\${cfg.tmdbKey}&mdblistKey=\${cfg.mdblistKey}&simklClientId=\${cfg.simklClientId}&ratings=\${cfg.ratings}&posterRatings=\${cfg.posterRatings}&backdropRatings=\${cfg.backdropRatings}&logoRatings=\${cfg.logoRatings}&lang=\${cfg.lang}&streamBadges=\${cfg.streamBadges}&posterStreamBadges=\${cfg.posterStreamBadges}&backdropStreamBadges=\${cfg.backdropStreamBadges}&qualityBadgesSide=\${cfg.qualityBadgesSide}&posterQualityBadgesPosition=\${cfg.posterQualityBadgesPosition}&qualityBadgesStyle=\${cfg.qualityBadgesStyle}&posterQualityBadgesStyle=\${cfg.posterQualityBadgesStyle}&backdropQualityBadgesStyle=\${cfg.backdropQualityBadgesStyle}&ratingStyle=\${typeRatingStyle}&imageText=\${typeImageText}&posterRatingsLayout=\${cfg.posterRatingsLayout}&posterRatingsMaxPerSide=\${cfg.posterRatingsMaxPerSide}&backdropRatingsLayout=\${cfg.backdropRatingsLayout}
+\${cfg.baseUrl}/\${type}/\${id}.jpg?tmdbKey=\${cfg.tmdbKey}&mdblistKey=\${cfg.mdblistKey}&simklClientId=\${cfg.simklClientId}&ratings=\${cfg.ratings}&posterRatings=\${cfg.posterRatings}&backdropRatings=\${cfg.backdropRatings}&thumbnailRatings=\${cfg.thumbnailRatings}&logoRatings=\${cfg.logoRatings}&lang=\${cfg.lang}&streamBadges=\${cfg.streamBadges}&posterStreamBadges=\${cfg.posterStreamBadges}&backdropStreamBadges=\${cfg.backdropStreamBadges}&qualityBadgesSide=\${cfg.qualityBadgesSide}&posterQualityBadgesPosition=\${cfg.posterQualityBadgesPosition}&qualityBadgesStyle=\${cfg.qualityBadgesStyle}&posterQualityBadgesStyle=\${cfg.posterQualityBadgesStyle}&backdropQualityBadgesStyle=\${cfg.backdropQualityBadgesStyle}&ratingStyle=\${typeRatingStyle}&imageText=\${typeImageText}&posterRatingsLayout=\${cfg.posterRatingsLayout}&posterRatingsMaxPerSide=\${cfg.posterRatingsMaxPerSide}&backdropRatingsLayout=\${cfg.backdropRatingsLayout}
 
 For thumbnails use thumbnailRatingsLayout and thumbnailSize instead of imageText.
 Omit imageText when type=logo or type=thumbnail.
 
-Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRatings/logoRatings to disable providers.`;
+Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRatings/thumbnailRatings/logoRatings to disable providers.`;
 
     navigator.clipboard.writeText(prompt);
     setCopied(true);
@@ -690,8 +703,10 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     const ratingPreferencesForType =
       previewType === 'poster'
         ? posterRatingPreferences
-        : previewType === 'backdrop' || previewType === 'thumbnail'
+        : previewType === 'backdrop'
           ? backdropRatingPreferences
+          : previewType === 'thumbnail'
+            ? thumbnailRatingPreferences
           : logoRatingPreferences;
     const ratingsQuery = stringifyRatingPreferencesAllowEmpty(ratingPreferencesForType);
     const ratingStyleForType =
@@ -714,8 +729,10 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     });
     if (previewType === 'poster') {
       query.set('posterRatings', ratingsQuery);
-    } else if (previewType === 'backdrop' || previewType === 'thumbnail') {
+    } else if (previewType === 'backdrop') {
       query.set('backdropRatings', ratingsQuery);
+    } else if (previewType === 'thumbnail') {
+      query.set('thumbnailRatings', ratingsQuery);
     } else {
       query.set('logoRatings', ratingsQuery);
     }
@@ -783,6 +800,7 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     backdropImageText,
     posterRatingPreferences,
     backdropRatingPreferences,
+    thumbnailRatingPreferences,
     logoRatingPreferences,
     posterStreamBadges,
     backdropStreamBadges,
@@ -825,14 +843,18 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
 
     const posterRatingsQuery = stringifyRatingPreferencesAllowEmpty(posterRatingPreferences);
     const backdropRatingsQuery = stringifyRatingPreferencesAllowEmpty(backdropRatingPreferences);
+    const thumbnailRatingsQuery = stringifyRatingPreferencesAllowEmpty(thumbnailRatingPreferences);
     const logoRatingsQuery = stringifyRatingPreferencesAllowEmpty(logoRatingPreferences);
     const ratingsMatch =
-      posterRatingsQuery === backdropRatingsQuery && posterRatingsQuery === logoRatingsQuery;
+      posterRatingsQuery === backdropRatingsQuery &&
+      posterRatingsQuery === thumbnailRatingsQuery &&
+      posterRatingsQuery === logoRatingsQuery;
     if (ratingsMatch) {
       config.ratings = posterRatingsQuery;
     } else {
       config.posterRatings = posterRatingsQuery;
       config.backdropRatings = backdropRatingsQuery;
+      config.thumbnailRatings = thumbnailRatingsQuery;
       config.logoRatings = logoRatingsQuery;
     }
     if (lang) {
@@ -895,6 +917,7 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     simklClientId,
     posterRatingPreferences,
     backdropRatingPreferences,
+    thumbnailRatingPreferences,
     logoRatingPreferences,
     posterStreamBadges,
     backdropStreamBadges,
@@ -940,14 +963,18 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
 
     const proxyPosterRatingsQuery = stringifyRatingPreferencesAllowEmpty(posterRatingPreferences);
     const proxyBackdropRatingsQuery = stringifyRatingPreferencesAllowEmpty(backdropRatingPreferences);
+    const proxyThumbnailRatingsQuery = stringifyRatingPreferencesAllowEmpty(thumbnailRatingPreferences);
     const proxyLogoRatingsQuery = stringifyRatingPreferencesAllowEmpty(logoRatingPreferences);
     const proxyRatingsMatch =
-      proxyPosterRatingsQuery === proxyBackdropRatingsQuery && proxyPosterRatingsQuery === proxyLogoRatingsQuery;
+      proxyPosterRatingsQuery === proxyBackdropRatingsQuery &&
+      proxyPosterRatingsQuery === proxyThumbnailRatingsQuery &&
+      proxyPosterRatingsQuery === proxyLogoRatingsQuery;
     if (proxyRatingsMatch) {
       config.ratings = proxyPosterRatingsQuery;
     } else {
       config.posterRatings = proxyPosterRatingsQuery;
       config.backdropRatings = proxyBackdropRatingsQuery;
+      config.thumbnailRatings = proxyThumbnailRatingsQuery;
       config.logoRatings = proxyLogoRatingsQuery;
     }
     if (lang) {
@@ -1011,6 +1038,7 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     simklClientId,
     posterRatingPreferences,
     backdropRatingPreferences,
+    thumbnailRatingPreferences,
     logoRatingPreferences,
     lang,
     posterStreamBadges,
@@ -1072,13 +1100,13 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
       setPosterRatingRows(updater);
       return;
     }
-    if (type === 'backdrop' || type === 'thumbnail') {
-      setBackdropRatingRows((current) => {
+    if (type === 'backdrop') {
+      setBackdropRatingRows(updater);
+      return;
+    }
+    if (type === 'thumbnail') {
+      setThumbnailRatingRows((current) => {
         const next = updater(current);
-        if (type !== 'thumbnail') {
-          return next;
-        }
-
         const supportedSet = new Set<RatingPreference>(THUMBNAIL_SUPPORTED_RATINGS);
         return next.map((row) => ({
           ...row,
@@ -1176,6 +1204,7 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
       backdropImageText,
       posterRatingPreferences,
       backdropRatingPreferences,
+      thumbnailRatingPreferences,
       logoRatingPreferences,
       posterStreamBadges,
       backdropStreamBadges,
@@ -1317,6 +1346,14 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
       setBackdropRatingRows(enabledOrderedToRows(backdropRatings));
     }
 
+    const thumbnailRatingsRaw =
+      resolveRatingPreferences((payload as Record<string, unknown>).thumbnailRatingPreferences, payload.thumbnailRatings) ??
+      resolveRatingPreferences(null, payload.ratings);
+    if (thumbnailRatingsRaw !== null) {
+      const thumbnailRatings = thumbnailRatingsRaw.filter((rating) => THUMBNAIL_SUPPORTED_RATINGS.includes(rating));
+      setThumbnailRatingRows(enabledOrderedToRows(thumbnailRatings));
+    }
+
     const logoRatings =
       resolveRatingPreferences(payload.logoRatingPreferences, payload.logoRatings) ??
       resolveRatingPreferences(null, payload.ratings);
@@ -1409,15 +1446,17 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     previewType === 'poster'
       ? 'Poster Providers'
       : previewType === 'backdrop'
-        ? 'Backdrop Providers'
-        : previewType === 'thumbnail'
+      ? 'Backdrop Providers'
+      : previewType === 'thumbnail'
           ? 'Thumbnail Providers'
         : 'Logo Providers';
   const ratingProviderRows =
     previewType === 'poster'
       ? posterRatingRows
-      : previewType === 'backdrop' || previewType === 'thumbnail'
+      : previewType === 'backdrop'
         ? backdropRatingRows
+        : previewType === 'thumbnail'
+          ? thumbnailRatingRows
         : logoRatingRows;
   const visibleRatingProviderRows =
     previewType === 'thumbnail'
