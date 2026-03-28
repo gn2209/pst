@@ -845,7 +845,7 @@ export function HomePageView({ refs, state, derived, actions }: HomePageViewProp
                 <Terminal className="w-5 h-5 text-orange-500" /> Aiometadata Patterns
               </h3>
             </div>
-            <p className="mt-2 text-sm text-slate-400 max-w-3xl">Copy these URL patterns directly into aiometadata.</p>
+            <p className="mt-2 text-sm text-slate-400 max-w-3xl">Copy these URL patterns directly into aiometadata. Use TMDB IDs in the form `tmdb:{'{type}'}:{'{tmdb_id}'}` and `tmdb:{'{type}'}:{'{tmdb_id}'}:{'{season}'}:{'{episode}'}` for episode thumbnails.</p>
             <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-3">
               {([
                 ['poster', 'Poster URL Pattern'],
