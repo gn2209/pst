@@ -1,5 +1,9 @@
 name: Sync della repo sullo Space HF
 
+env:
+  HF_USERNAME: gon229
+  HF_SPACE: pst
+  
 on:
   schedule:
     - cron: "0 3 * * *"
@@ -13,4 +17,4 @@ jobs:
         run: |
           curl -X POST \
             -H "Authorization: Bearer ${{ secrets.HF_TOKEN }}" \
-            "https://huggingface.co/api/spaces/gon229/pst/restart?factory=true"
+            "https://huggingface.co/api/spaces/HF_USERNAME/HF_SPACE/restart?factory=true"
