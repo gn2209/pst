@@ -1,8 +1,8 @@
-name: 'Sync (ogni 6 ore)'
+name: 'Sync (ogni ora)'
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
+   - cron:  '0 * * * *'
 
   workflow_dispatch:  # click the button on the GitHub repo!
     inputs:
