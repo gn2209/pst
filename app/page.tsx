@@ -421,8 +421,8 @@ const buildAiometadataPatternBlock = (options: {
 
   const idPattern =
     options.imageType === 'thumbnail'
-      ? '{imdb_id}:{season}:{episode}'
-      : '{imdb_id}';
+      ? 'tmdb:{type}:{tmdb_id}:{season}:{episode}'
+      : 'tmdb:{type}:{tmdb_id}';
   const basePattern = `${options.baseUrl}/${options.imageType}/${idPattern}.jpg`;
   return query ? `${basePattern}?${query}` : basePattern;
 };
