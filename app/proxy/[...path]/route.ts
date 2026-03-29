@@ -22,6 +22,7 @@ const corsHeaders = {
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const tmdbFetchCache = new Map<string, Promise<any>>();
 const textFetchCache = new Map<string, Promise<string | null>>();
+type TmdbRef = { id: number; type: 'movie' | 'tv'; season?: number | null; episode?: number | null; isAnime?: boolean };
 
 const fetchTmdbJson = async (url: string) => {
   const cached = tmdbFetchCache.get(url);
@@ -146,7 +147,7 @@ const resolveTmdbFromErdbId = async (
   metaType: unknown,
   tmdbKey: string,
   lang: string | null,
-): Promise<{ id: number; type: 'movie' | 'tv'; season?: number | null; isAnime?: boolean } | null> => {
+): Promise<TmdbRef | null> => {
   if (!erdbId) return null;
   const stremioType = normalizeStremioType(metaType);
 
@@ -284,6 +285,35 @@ const resolveTmdbFromErdbId = async (
   return null;
 };
 
+const resolveTmdbEpisodeFromVideo = async (
+  baseErdbId: string,
+  metaType: unknown,
+  tmdbKey: string,
+  lang: string | null,
+  seasonValue: number,
+  episodeValue: number,
+) => {
+  if (!Number.isFinite(seasonValue) || !Number.isFinite(episodeValue)) return null;
+
+  if (baseErdbId.startsWith('realimdb:') || baseErdbId.startsWith('tvdb:')) {
+    return resolveTmdbFromErdbId(
+      `${baseErdbId}:${seasonValue}:${episodeValue}`,
+      metaType,
+      tmdbKey,
+      lang,
+    );
+  }
+
+  const baseRef = await resolveTmdbFromErdbId(baseErdbId, metaType, tmdbKey, lang);
+  if (!baseRef || baseRef.type !== 'tv') return null;
+
+  return {
+    ...baseRef,
+    season: seasonValue,
+    episode: episodeValue,
+  };
+};
+
 const translateTextFields = (
   target: Record<string, unknown>,
   translatedTitle: string | null,
@@ -408,8 +438,29 @@ const translateMetaPayload = async (
         return video;
       }
 
+      const episodeTmdbRef = await resolveTmdbEpisodeFromVideo(
+        erdbId,
+        rawType,
+        config.tmdbKey,
+        lang,
+        seasonValue,
+        episodeValue,
+      );
+      if (!episodeTmdbRef || episodeTmdbRef.type !== 'tv') {
+        return video;
+      }
+
+      const resolvedSeason =
+        typeof episodeTmdbRef.season === 'number' && episodeTmdbRef.season > 0
+          ? episodeTmdbRef.season
+          : seasonValue;
+      const resolvedEpisode =
+        typeof episodeTmdbRef.episode === 'number' && episodeTmdbRef.episode > 0
+          ? episodeTmdbRef.episode
+          : episodeValue;
+
       const episodeUrl = new URL(
-        `${TMDB_BASE_URL}/tv/${tmdbRef.id}/season/${seasonValue}/episode/${episodeValue}`,
+        `${TMDB_BASE_URL}/tv/${episodeTmdbRef.id}/season/${resolvedSeason}/episode/${resolvedEpisode}`,
       );
       episodeUrl.searchParams.set('api_key', config.tmdbKey);
       episodeUrl.searchParams.set('language', lang);
