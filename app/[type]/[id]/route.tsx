@@ -111,7 +111,7 @@ const parseNonNegativeInt = (value?: string | null, max = Number.MAX_SAFE_INTEGE
   if (!Number.isFinite(parsed) || parsed < 0) return null;
   return Math.min(max, Math.floor(parsed));
 };
-const FINAL_IMAGE_RENDERER_CACHE_VERSION = 'poster-backdrop-logo-thumbnail-v40';
+const FINAL_IMAGE_RENDERER_CACHE_VERSION = 'poster-backdrop-logo-thumbnail-v41';
 const TMDB_CACHE_TTL_MS = parseCacheTtlMs(
   process.env.ERDB_TMDB_CACHE_TTL_MS,
   3 * 24 * 60 * 60 * 1000,
@@ -1114,20 +1114,30 @@ const fetchAnimemappingPayload = async ({
   provider,
   externalId,
   season,
+  episode,
   phases,
 }: {
   provider: AnimeMappingProvider;
   externalId: string;
   season?: string | number | null;
+  episode?: string | number | null;
   phases: PhaseDurations;
 }) => {
   const normalizedExternalId = externalId.trim();
   if (!normalizedExternalId) return null;
 
   const normalizedSeason = String(season ?? '').trim();
-  const seasonQuery = normalizedSeason ? `?s=${encodeURIComponent(normalizedSeason)}` : '';
-  const cacheKey = `animemapping:${provider}:${normalizedExternalId}:s:${normalizedSeason || '-'}`;
-  const url = `https://animemapping.stremio.dpdns.org/${provider}/${encodeURIComponent(normalizedExternalId)}${seasonQuery}`;
+  const normalizedEpisode = String(episode ?? '').trim();
+  const searchParams = new URLSearchParams();
+  if (normalizedSeason) {
+    searchParams.set('s', normalizedSeason);
+  }
+  if (normalizedEpisode) {
+    searchParams.set('ep', normalizedEpisode);
+  }
+  const query = searchParams.toString();
+  const cacheKey = `animemapping:${provider}:${normalizedExternalId}:s:${normalizedSeason || '-'}:e:${normalizedEpisode || '-'}`;
+  const url = `https://animemapping.stremio.dpdns.org/${provider}/${encodeURIComponent(normalizedExternalId)}${query ? `?${query}` : ''}`;
 
   try {
     const response = await fetchJsonCached(
@@ -1660,6 +1670,8 @@ type FastRenderInput = {
   posterRowHorizontalInset: number;
   posterTitleText?: string | null;
   posterLogoUrl?: string | null;
+  thumbnailFallbackEpisodeText?: string | null;
+  thumbnailFallbackEpisodeCode?: string | null;
   badgeIconSize: number;
   badgeFontSize: number;
   badgePaddingX: number;
@@ -2104,6 +2116,58 @@ const buildPosterTitleSvg = (title: string, maxWidth: number) => {
   </filter>
 </defs>
 <text x="${Math.round(width / 2)}" y="${startY}" text-anchor="middle" font-family="'Noto Sans','DejaVu Sans',Arial,sans-serif" font-size="${fontSize}" font-weight="800" letter-spacing="${letterSpacing}" fill="#ffffff" stroke="rgba(0,0,0,0.65)" stroke-width="${strokeWidth}" paint-order="stroke fill" filter="url(#poster-title-shadow)">${tspans}</text>
+</svg>`;
+  return { svg, width, height };
+};
+
+const buildThumbnailFallbackTitleSvg = (
+  episodeCode: string,
+  title: string,
+  maxWidth: number
+) => {
+  const normalizedCode = episodeCode.replace(/\s+/g, ' ').trim();
+  const normalizedTitle = title.replace(/\s+/g, ' ').trim();
+  if (!normalizedCode && !normalizedTitle) return null;
+
+  const titleLines = normalizedTitle ? splitTitleForPosterText(normalizedTitle).slice(0, 2) : [];
+  const width = Math.max(320, Math.round(maxWidth));
+  const contentWidth = Math.max(260, width - 40);
+  const codeFontSize = 22;
+  const titleBaseFontSize = titleLines.length <= 1 ? 34 : 30;
+  const longestTitleWidth = Math.max(
+    ...titleLines.map((line) => estimateGeneratedLogoLineWidth(line, titleBaseFontSize)),
+    1
+  );
+  const titleWidthFitScale = Math.min(1, contentWidth / longestTitleWidth);
+  const titleFontSize = Math.max(20, Math.floor(titleBaseFontSize * titleWidthFitScale));
+  const titleLineHeight = Math.round(titleFontSize * 1.08);
+  const codeY = 32;
+  const titleStartY = normalizedCode ? 62 : 36;
+  const titleTspans = titleLines
+    .map((line, index) => {
+      const y = titleStartY + index * titleLineHeight;
+      const estimatedLineWidth = estimateGeneratedLogoLineWidth(line, titleFontSize);
+      const textLength =
+        estimatedLineWidth > contentWidth
+          ? ` textLength="${contentWidth}" lengthAdjust="spacingAndGlyphs"`
+          : '';
+      return `<tspan x="20" y="${y}"${textLength}>${escapeXml(line)}</tspan>`;
+    })
+    .join('');
+  const height = Math.max(56, 28 + (normalizedCode ? 24 : 0) + titleLines.length * titleLineHeight + 18);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+<defs>
+  <linearGradient id="thumbnail-fallback-bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="rgba(15,23,42,0.84)" />
+    <stop offset="100%" stop-color="rgba(2,6,23,0.92)" />
+  </linearGradient>
+  <filter id="thumbnail-fallback-shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.42" />
+  </filter>
+</defs>
+<rect x="0.75" y="0.75" width="${Math.max(0, width - 1.5)}" height="${Math.max(0, height - 1.5)}" rx="18" fill="url(#thumbnail-fallback-bg)" stroke="rgba(255,255,255,0.14)" filter="url(#thumbnail-fallback-shadow)" />
+${normalizedCode ? `<text x="20" y="${codeY}" font-family="'Noto Sans','DejaVu Sans',Arial,sans-serif" font-size="${codeFontSize}" font-weight="800" letter-spacing="1.4" fill="rgba(255,255,255,0.82)">${escapeXml(normalizedCode)}</text>` : ''}
+${titleLines.length > 0 ? `<text x="20" y="${titleStartY}" font-family="'Noto Sans','DejaVu Sans',Arial,sans-serif" font-size="${titleFontSize}" font-weight="800" fill="#ffffff">${titleTspans}</text>` : ''}
 </svg>`;
   return { svg, width, height };
 };
@@ -2807,6 +2871,15 @@ const renderWithSharp = async (
       input.imageType === 'poster' && input.posterTitleText
         ? buildPosterTitleSvg(input.posterTitleText, posterRowRegionWidth)
         : null;
+    const thumbnailFallbackTitleSpec =
+      input.imageType === 'thumbnail' &&
+        (input.thumbnailFallbackEpisodeCode || input.thumbnailFallbackEpisodeText)
+        ? buildThumbnailFallbackTitleSvg(
+          input.thumbnailFallbackEpisodeCode || '',
+          input.thumbnailFallbackEpisodeText || '',
+          Math.min(Math.round(input.outputWidth * 0.62), input.outputWidth - 32)
+        )
+        : null;
     let posterLogoSpec: { buffer: Buffer; width: number; height: number } | null = null;
     if (input.imageType === 'poster' && input.posterLogoUrl) {
       try {
@@ -3109,6 +3182,24 @@ const renderWithSharp = async (
       );
       overlays.push({ input: overlay.buffer, top: overlayY, left: overlayX });
     };
+    const composeThumbnailFallbackOverlay = () => {
+      if (input.imageType !== 'thumbnail' || !thumbnailFallbackTitleSpec) return;
+      const bottomInset = Math.max(16, input.badgeBottomOffset);
+      const leftInset = 16;
+      const overlayX = Math.max(
+        leftInset,
+        Math.min(leftInset, Math.max(leftInset, input.outputWidth - thumbnailFallbackTitleSpec.width - leftInset))
+      );
+      const overlayY = Math.max(
+        16,
+        input.outputHeight - thumbnailFallbackTitleSpec.height - bottomInset
+      );
+      overlays.push({
+        input: Buffer.from(thumbnailFallbackTitleSpec.svg),
+        top: overlayY,
+        left: overlayX,
+      });
+    };
     const composeEdgeAlignedPosterBadge = (
       badge: RatingBadge,
       rowY: number,
@@ -3385,6 +3476,7 @@ const renderWithSharp = async (
             rowY += badgeHeight + input.badgeGap;
           }
         }
+        composeThumbnailFallbackOverlay();
       } else if (input.imageType === 'poster') {
         const bottomRowY = Math.max(
           input.badgeTopOffset,
@@ -4127,17 +4219,29 @@ export async function GET(
           }
         }
       } else {
-        // 1. Find TMDB ID from IMDb ID
-        const findResponse = await fetchJsonCached(
-          `tmdb:find:${mediaId}`,
-          `https://api.themoviedb.org/3/find/${mediaId}?api_key=${tmdbKey}&external_source=imdb_id`,
-          TMDB_CACHE_TTL_MS,
-          phases,
-          'tmdb'
-        );
-        const findData = findResponse.data || {};
-        media = findData.movie_results?.[0] || findData.tv_results?.[0];
-        mediaType = findData.movie_results?.[0] ? 'movie' : 'tv';
+        // 1. Resolve IMDb IDs directly through TMDB. Keep the requested season/episode unchanged.
+        if (isImdbId(mediaId)) {
+          const findResponse = await fetchJsonCached(
+            `tmdb:find:${mediaId}`,
+            `https://api.themoviedb.org/3/find/${mediaId}?api_key=${tmdbKey}&external_source=imdb_id`,
+            TMDB_CACHE_TTL_MS,
+            phases,
+            'tmdb'
+          );
+          const findData = findResponse.data || {};
+          const prefersTvResult =
+            imageType === 'thumbnail' ||
+            (typeof season === 'string' && season.length > 0) ||
+            (typeof episode === 'string' && episode.length > 0);
+          media = prefersTvResult
+            ? findData.tv_results?.[0] || findData.movie_results?.[0]
+            : findData.movie_results?.[0] || findData.tv_results?.[0];
+          mediaType = media
+            ? findData.tv_results?.[0] && media === findData.tv_results[0]
+              ? 'tv'
+              : 'movie'
+            : null;
+        }
       }
 
       if (!media && !useRawKitsuFallback) {
@@ -4154,6 +4258,10 @@ export async function GET(
       let imgUrl = rawFallbackImageUrl;
       let tmdbRating = 'N/A';
       let episodeTmdbRating: string | null = null;
+      let thumbnailFallbackEpisodeText: string | null = null;
+      let thumbnailFallbackEpisodeCode: string | null = null;
+      let usedThumbnailBackdropFallback = false;
+      let resolvedTmdbEpisodeNumber: string | null = null;
       let providerRatings = new Map<RatingPreference, string>();
       const renderedRatingTtlByProvider = new Map<BadgeKey, number>();
       let outputWidth = 1280;
@@ -4197,6 +4305,50 @@ export async function GET(
         const streamSeason = season || '1';
         const streamEpisode = episode || '1';
         streamBadgesIdForCache = `${streamBadgesIdForCache}:${streamSeason}:${streamEpisode}`;
+      }
+      const seasonDetailsPromise =
+        !useRawKitsuFallback && imageType === 'thumbnail' && mediaType === 'tv' && season && episode
+          ? (async () => {
+            const seasonCacheKeyBase = `tmdb:tv:${media.id}:season:${season}`;
+            const primaryResponse = await fetchJsonCached(
+              `${seasonCacheKeyBase}:${requestedImageLang}`,
+              `https://api.themoviedb.org/3/tv/${media.id}/season/${season}?api_key=${tmdbKey}&language=${requestedImageLang}`,
+              TMDB_CACHE_TTL_MS,
+              phases,
+              'tmdb'
+            );
+            if (primaryResponse.ok && primaryResponse.data) {
+              return primaryResponse.data;
+            }
+            if (requestedImageLang !== FALLBACK_IMAGE_LANGUAGE) {
+              const fallbackResponse = await fetchJsonCached(
+                `${seasonCacheKeyBase}:${FALLBACK_IMAGE_LANGUAGE}`,
+                `https://api.themoviedb.org/3/tv/${media.id}/season/${season}?api_key=${tmdbKey}&language=${FALLBACK_IMAGE_LANGUAGE}`,
+                TMDB_CACHE_TTL_MS,
+                phases,
+                'tmdb'
+              );
+              if (fallbackResponse.ok && fallbackResponse.data) {
+                return fallbackResponse.data;
+              }
+            }
+            return null;
+          })()
+          : null;
+      if (seasonDetailsPromise) {
+        const seasonDetails = await seasonDetailsPromise;
+        const requestedEpisodeIndex = Number(episode);
+        const seasonEpisodes = Array.isArray(seasonDetails?.episodes) ? seasonDetails.episodes : [];
+        if (Number.isFinite(requestedEpisodeIndex) && requestedEpisodeIndex > 0) {
+          const seasonEpisode = seasonEpisodes[requestedEpisodeIndex - 1];
+          const mappedEpisodeNumber =
+            typeof seasonEpisode?.episode_number === 'number' || typeof seasonEpisode?.episode_number === 'string'
+              ? String(seasonEpisode.episode_number).trim()
+              : '';
+          if (mappedEpisodeNumber) {
+            resolvedTmdbEpisodeNumber = mappedEpisodeNumber;
+          }
+        }
       }
       const streamBadgesWindowTtlMs = shouldRenderStreamBadges
         ? mediaType && streamBadgesIdForCache
@@ -4246,7 +4398,11 @@ export async function GET(
         const cachedFinalImage = await getCachedImageFromObjectStorage(finalObjectStorageKey);
         if (cachedFinalImage) {
           objectStorageHit = true;
-          return cachedFinalImage;
+          return {
+            body: cachedFinalImage.body,
+            contentType: cachedFinalImage.contentType,
+            cacheControl: cachedFinalImage.cacheControl,
+          };
         }
       }
       const detailsBundlePromise = !useRawKitsuFallback
@@ -4288,10 +4444,11 @@ export async function GET(
       const episodeDetailsPromise =
         !useRawKitsuFallback && imageType === 'thumbnail' && mediaType === 'tv' && season && episode
           ? (async () => {
-            const episodeCacheKeyBase = `tmdb:tv:${media.id}:season:${season}:episode:${episode}`;
+            const tmdbEpisodeLookupNumber = resolvedTmdbEpisodeNumber || episode;
+            const episodeCacheKeyBase = `tmdb:tv:${media.id}:season:${season}:episode:${tmdbEpisodeLookupNumber}`;
             const primaryResponse = await fetchJsonCached(
               `${episodeCacheKeyBase}:${requestedImageLang}`,
-              `https://api.themoviedb.org/3/tv/${media.id}/season/${season}/episode/${episode}?api_key=${tmdbKey}&language=${requestedImageLang}`,
+              `https://api.themoviedb.org/3/tv/${media.id}/season/${season}/episode/${tmdbEpisodeLookupNumber}?api_key=${tmdbKey}&language=${requestedImageLang}`,
               TMDB_CACHE_TTL_MS,
               phases,
               'tmdb'
@@ -4302,7 +4459,7 @@ export async function GET(
             if (requestedImageLang !== FALLBACK_IMAGE_LANGUAGE) {
               const fallbackResponse = await fetchJsonCached(
                 `${episodeCacheKeyBase}:${FALLBACK_IMAGE_LANGUAGE}`,
-                `https://api.themoviedb.org/3/tv/${media.id}/season/${season}/episode/${episode}?api_key=${tmdbKey}&language=${FALLBACK_IMAGE_LANGUAGE}`,
+                `https://api.themoviedb.org/3/tv/${media.id}/season/${season}/episode/${tmdbEpisodeLookupNumber}?api_key=${tmdbKey}&language=${FALLBACK_IMAGE_LANGUAGE}`,
                 TMDB_CACHE_TTL_MS,
                 phases,
                 'tmdb'
@@ -4317,9 +4474,10 @@ export async function GET(
       const episodeExternalIdsPromise =
         !useRawKitsuFallback && imageType === 'thumbnail' && mediaType === 'tv' && season && episode
           ? (async () => {
+            const tmdbEpisodeLookupNumber = resolvedTmdbEpisodeNumber || episode;
             const response = await fetchJsonCached(
-              `tmdb:tv:${media.id}:season:${season}:episode:${episode}:external_ids`,
-              `https://api.themoviedb.org/3/tv/${media.id}/season/${season}/episode/${episode}/external_ids?api_key=${tmdbKey}`,
+              `tmdb:tv:${media.id}:season:${season}:episode:${tmdbEpisodeLookupNumber}:external_ids`,
+              `https://api.themoviedb.org/3/tv/${media.id}/season/${season}/episode/${tmdbEpisodeLookupNumber}/external_ids?api_key=${tmdbKey}`,
               TMDB_CACHE_TTL_MS,
               phases,
               'tmdb'
@@ -5100,6 +5258,7 @@ export async function GET(
               FALLBACK_IMAGE_LANGUAGE,
               originalBackdropPath
             );
+            usedThumbnailBackdropFallback = Boolean(selectedBackdrop?.file_path);
             return {
               imgPath: selectedBackdrop?.file_path || '',
               logoAspectRatio: null,
@@ -5113,6 +5272,14 @@ export async function GET(
             if (episodeDetailsPromise) {
               const episodeDetails = await episodeDetailsPromise;
               stillPath = typeof episodeDetails?.still_path === 'string' ? episodeDetails.still_path : null;
+              thumbnailFallbackEpisodeText =
+                typeof episodeDetails?.name === 'string' && episodeDetails.name.trim().length > 0
+                  ? episodeDetails.name.trim()
+                  : null;
+              thumbnailFallbackEpisodeCode =
+                season && episode
+                  ? `S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
+                  : null;
               const normalizedEpisodeRating = normalizeRatingValue(episodeDetails?.vote_average);
               if (normalizedEpisodeRating) {
                 episodeTmdbRating = normalizedEpisodeRating;
@@ -5245,7 +5412,11 @@ export async function GET(
         shouldApplyPosterCleanOverlay && selectedPosterLogoPath
           ? buildTmdbImageUrl('logo', selectedPosterLogoPath, outputWidth)
           : null;
-      if (!shouldRenderBadges && !posterTitleText && !posterLogoUrl) {
+      const shouldRenderThumbnailFallbackOverlay =
+        imageType === 'thumbnail' &&
+        usedThumbnailBackdropFallback &&
+        Boolean(thumbnailFallbackEpisodeCode || thumbnailFallbackEpisodeText);
+      if (!shouldRenderBadges && !posterTitleText && !posterLogoUrl && !shouldRenderThumbnailFallbackOverlay) {
         return getSourceImagePayload(imgUrl);
       }
       if (providerRatingsPromise) {
@@ -5287,7 +5458,13 @@ export async function GET(
           iconCornerRadius: 'iconCornerRadius' in meta ? meta.iconCornerRadius : undefined,
         });
       }
-      if (ratingBadges.length === 0 && streamBadges.length === 0 && !posterTitleText && !posterLogoUrl) {
+      if (
+        ratingBadges.length === 0 &&
+        streamBadges.length === 0 &&
+        !posterTitleText &&
+        !posterLogoUrl &&
+        !shouldRenderThumbnailFallbackOverlay
+      ) {
         return getSourceImagePayload(imgUrl);
       }
       const usePosterBadgeLayout = type === 'poster';
@@ -5676,7 +5853,10 @@ export async function GET(
         renderedRatingCacheTtlCandidates.length > 0
           ? Math.min(...renderedRatingCacheTtlCandidates)
           : TMDB_CACHE_TTL_MS;
-      const responseCacheControl = `public, s-maxage=${Math.max(60, Math.floor(finalImageCacheTtlMs / 1000))}, stale-while-revalidate=60`;
+      const responseCacheControl =
+        imageType === 'thumbnail'
+          ? 'no-store, max-age=0'
+          : `public, s-maxage=${Math.max(60, Math.floor(finalImageCacheTtlMs / 1000))}, stale-while-revalidate=60`;
       const renderedPayload = await renderWithSharp(
         {
           imageType,
@@ -5693,6 +5873,8 @@ export async function GET(
           posterRowHorizontalInset,
           posterTitleText,
           posterLogoUrl,
+          thumbnailFallbackEpisodeText: usedThumbnailBackdropFallback ? thumbnailFallbackEpisodeText : null,
+          thumbnailFallbackEpisodeCode: usedThumbnailBackdropFallback ? thumbnailFallbackEpisodeCode : null,
           badgeIconSize,
           badgeFontSize,
           badgePaddingX,

@@ -9,6 +9,8 @@ import {
   useState,
   useSyncExternalStore,
   type ChangeEvent,
+  type Dispatch,
+  type SetStateAction,
 } from 'react';
 import {
   RATING_PROVIDER_OPTIONS,
@@ -65,6 +67,8 @@ const SUPPORTED_LANGUAGES = [
 const VISIBLE_RATING_PROVIDER_OPTIONS = RATING_PROVIDER_OPTIONS;
 const THUMBNAIL_SUPPORTED_RATINGS: RatingPreference[] = ['tmdb', 'imdb'];
 const EPISODE_ID_PATTERN = /^.+:\d+:\d+$/;
+const DEFAULT_SERIES_ID = 'tt4574334';
+const DEFAULT_THUMBNAIL_ID = 'tt4574334:1:1';
 const PROXY_TYPES = ['poster', 'backdrop', 'logo', 'thumbnail'] as const;
 const PREVIEW_TYPES = ['poster', 'backdrop', 'logo', 'thumbnail'] as const;
 type ProxyType = (typeof PROXY_TYPES)[number];
@@ -442,7 +446,7 @@ const maskSensitiveText = (value: string) => value.replace(/[^\s]/g, '*');
 
 export default function Home() {
   const [previewType, setPreviewType] = useState<PreviewType>('poster');
-  const [mediaId, setMediaId] = useState('tt0133093');
+  const [mediaId, setMediaId] = useState(DEFAULT_SERIES_ID);
   const [lang, setLang] = useState('en');
   const [posterImageText, setPosterImageText] = useState<'original' | 'clean' | 'alternative'>('clean');
   const [backdropImageText, setBackdropImageText] = useState<'original' | 'clean' | 'alternative'>('clean');
@@ -1486,6 +1490,17 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     }
     setPosterImageText(value);
   };
+  const handleSetPreviewType: Dispatch<SetStateAction<PreviewType>> = (value) => {
+    const nextPreviewType = typeof value === 'function' ? value(previewType) : value;
+    setPreviewType(nextPreviewType);
+    setMediaId((currentMediaId) => {
+      const trimmed = currentMediaId.trim();
+      if (nextPreviewType === 'thumbnail') {
+        return EPISODE_ID_PATTERN.test(trimmed) ? trimmed : DEFAULT_THUMBNAIL_ID;
+      }
+      return EPISODE_ID_PATTERN.test(trimmed) ? DEFAULT_SERIES_ID : trimmed || DEFAULT_SERIES_ID;
+    });
+  };
   const viewProps: HomePageViewProps = {
     refs: {
       navRef,
@@ -1548,7 +1563,7 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
       handleCopyProxy,
       handleCopyPrompt,
       handleCopyAiometadataPattern,
-      setPreviewType,
+      setPreviewType: handleSetPreviewType,
       setMediaId,
       setLang,
         setTmdbKey,
