@@ -99,6 +99,7 @@ const POSTER_QUALITY_BADGE_POSITION_OPTIONS: Array<{
 const TMDB_KEY_STORAGE_KEY = 'erdb_tmdb_key';
 const MDBLIST_KEY_STORAGE_KEY = 'erdb_mdblist_key';
 const SIMKL_CLIENT_ID_STORAGE_KEY = 'erdb_simkl_client_id';
+const PREVIEW_CONFIG_STORAGE_KEY = 'erdb_preview_config';
 const EXPORT_CONFIG_VERSION = 1;
 const RATING_PROVIDER_IDS = new Set(RATING_PROVIDER_OPTIONS.map((option) => option.id));
 const isRatingProviderId = (value: string): value is RatingPreference =>
@@ -545,6 +546,23 @@ export default function Home() {
       }
       if (storedSimklClientId) {
         setSimklClientId(storedSimklClientId);
+      }
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedPreviewConfig = safeLocalStorageGet(PREVIEW_CONFIG_STORAGE_KEY);
+    if (!storedPreviewConfig) {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      try {
+        const parsed = JSON.parse(storedPreviewConfig) as Record<string, unknown>;
+        applyImportedConfig(parsed);
+      } catch {
+        safeLocalStorageRemove(PREVIEW_CONFIG_STORAGE_KEY);
       }
     });
     return () => window.cancelAnimationFrame(frameId);
@@ -1384,6 +1402,66 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     setImportStatus('success');
     setImportMessage('Config loaded.');
   };
+
+  useEffect(() => {
+    const payload: Record<string, unknown> = {
+      version: EXPORT_CONFIG_VERSION,
+      previewType,
+      mediaId,
+      lang,
+      posterImageText,
+      backdropImageText,
+      posterRatingPreferences,
+      backdropRatingPreferences,
+      thumbnailRatingPreferences,
+      logoRatingPreferences,
+      posterStreamBadges,
+      backdropStreamBadges,
+      qualityBadgesSide,
+      posterQualityBadgesPosition,
+      posterQualityBadgesStyle,
+      backdropQualityBadgesStyle,
+      posterRatingStyle,
+      backdropRatingStyle,
+      logoRatingStyle,
+      posterRatingsLayout,
+      posterRatingsMaxPerSide,
+      backdropRatingsLayout,
+      thumbnailRatingsLayout,
+      thumbnailSize,
+      proxyManifestUrl,
+      proxyEnabledTypes,
+      translateMeta: proxyTranslateMeta,
+    };
+    safeLocalStorageSet(PREVIEW_CONFIG_STORAGE_KEY, JSON.stringify(payload));
+  }, [
+    previewType,
+    mediaId,
+    lang,
+    posterImageText,
+    backdropImageText,
+    posterRatingPreferences,
+    backdropRatingPreferences,
+    thumbnailRatingPreferences,
+    logoRatingPreferences,
+    posterStreamBadges,
+    backdropStreamBadges,
+    qualityBadgesSide,
+    posterQualityBadgesPosition,
+    posterQualityBadgesStyle,
+    backdropQualityBadgesStyle,
+    posterRatingStyle,
+    backdropRatingStyle,
+    logoRatingStyle,
+    posterRatingsLayout,
+    posterRatingsMaxPerSide,
+    backdropRatingsLayout,
+    thumbnailRatingsLayout,
+    thumbnailSize,
+    proxyManifestUrl,
+    proxyEnabledTypes,
+    proxyTranslateMeta,
+  ]);
 
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
