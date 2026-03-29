@@ -75,6 +75,8 @@ type ProxyType = (typeof PROXY_TYPES)[number];
 type PreviewType = (typeof PREVIEW_TYPES)[number];
 type ProxyEnabledTypes = Record<ProxyType, boolean>;
 type AiometadataPatternType = 'poster' | 'background' | 'logo' | 'episodeThumbnail';
+type AiometadataEpisodeProvider = 'tvdb' | 'realimdb';
+type ProxyEpisodeProvider = 'tmdb' | 'tvdb' | 'realimdb';
 type StreamBadgesSetting = 'auto' | 'on' | 'off';
 type QualityBadgesSide = 'left' | 'right';
 type PosterQualityBadgesPosition = 'auto' | QualityBadgesSide;
@@ -125,6 +127,10 @@ const isBackdropRatingLayout = (value: unknown): value is BackdropRatingLayout =
   BACKDROP_RATING_LAYOUT_OPTIONS.some((option) => option.id === value);
 const isThumbnailRatingLayout = (value: unknown): value is ThumbnailRatingLayout =>
   THUMBNAIL_RATING_LAYOUT_OPTIONS.some((option) => option.id === value);
+const isProxyEpisodeProvider = (value: unknown): value is ProxyEpisodeProvider =>
+  value === 'tmdb' || value === 'tvdb' || value === 'realimdb';
+const isAiometadataEpisodeProvider = (value: unknown): value is AiometadataEpisodeProvider =>
+  value === 'tvdb' || value === 'realimdb';
 
 const normalizeBaseUrl = (value: string) => value.trim().replace(/\/+$/, '');
 
@@ -329,6 +335,7 @@ const buildAiometadataPatternBlock = (options: {
   baseUrl: string;
   imageType: 'poster' | 'backdrop' | 'logo' | 'thumbnail';
   configString: string;
+  idPattern?: string;
 }) => {
   if (!options.baseUrl || !options.configString) {
     return '';
@@ -425,12 +432,16 @@ const buildAiometadataPatternBlock = (options: {
     .join('&');
 
   const idPattern =
-    options.imageType === 'thumbnail'
+    options.idPattern ||
+    (options.imageType === 'thumbnail'
       ? 'tmdb:{type}:{tmdb_id}:{season}:{episode}'
-      : 'tmdb:{type}:{tmdb_id}';
+      : 'tmdb:{type}:{tmdb_id}');
   const basePattern = `${options.baseUrl}/${options.imageType}/${idPattern}.jpg`;
   return query ? `${basePattern}?${query}` : basePattern;
 };
+
+const buildEpisodeThumbnailIdPattern = (provider: AiometadataEpisodeProvider) =>
+  provider === 'tvdb' ? 'tvdb:{tvdb_id}:{season}:{episode}' : 'realimdb:{imdb_id}:{season}:{episode}';
 
 const downloadJsonFile = (payload: Record<string, unknown>, filename: string) => {
   if (typeof window === 'undefined') return;
@@ -488,6 +499,7 @@ export default function Home() {
   const [tmdbKey, setTmdbKey] = useState('');
   const [simklClientId, setSimklClientId] = useState('');
   const [proxyManifestUrl, setProxyManifestUrl] = useState('');
+  const [proxyAiometadataProvider, setProxyAiometadataProvider] = useState<ProxyEpisodeProvider>('tmdb');
   const [proxyEnabledTypes, setProxyEnabledTypes] = useState<ProxyEnabledTypes>({
     poster: true,
     backdrop: true,
@@ -500,6 +512,7 @@ export default function Home() {
   const [showConfigString, setShowConfigString] = useState(false);
   const [showProxyUrl, setShowProxyUrl] = useState(false);
   const [aiometadataCopiedType, setAiometadataCopiedType] = useState<AiometadataPatternType | null>(null);
+  const [aiometadataEpisodeProvider, setAiometadataEpisodeProvider] = useState<AiometadataEpisodeProvider>('realimdb');
   const [exportStatus, setExportStatus] = useState<'idle' | 'with' | 'without'>('idle');
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
@@ -546,23 +559,6 @@ export default function Home() {
       }
       if (storedSimklClientId) {
         setSimklClientId(storedSimklClientId);
-      }
-    });
-    return () => window.cancelAnimationFrame(frameId);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const storedPreviewConfig = safeLocalStorageGet(PREVIEW_CONFIG_STORAGE_KEY);
-    if (!storedPreviewConfig) {
-      return;
-    }
-    const frameId = window.requestAnimationFrame(() => {
-      try {
-        const parsed = JSON.parse(storedPreviewConfig) as Record<string, unknown>;
-        applyImportedConfig(parsed);
-      } catch {
-        safeLocalStorageRemove(PREVIEW_CONFIG_STORAGE_KEY);
       }
     });
     return () => window.cancelAnimationFrame(frameId);
@@ -1049,6 +1045,9 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     if (thumbnailSize) {
       config.thumbnailSize = thumbnailSize;
     }
+    if (manifestUrl.toLowerCase().includes('aiometadata')) {
+      config.aiometadataProvider = proxyAiometadataProvider;
+    }
 
     config.erdbBase = baseUrl;
     const encoded = encodeBase64Url(JSON.stringify(config));
@@ -1081,12 +1080,20 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     backdropRatingsLayout,
     thumbnailRatingsLayout,
     thumbnailSize,
+    proxyAiometadataProvider,
     proxyEnabledTypes,
     proxyTranslateMeta,
     baseUrl,
   ]);
 
   const aiometadataPatterns = useMemo(() => {
+    const episodePattern = buildAiometadataPatternBlock({
+      baseUrl,
+      imageType: 'thumbnail',
+      configString,
+      idPattern: buildEpisodeThumbnailIdPattern(aiometadataEpisodeProvider),
+    });
+
     return {
       poster: buildAiometadataPatternBlock({
         baseUrl,
@@ -1103,15 +1110,12 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
         imageType: 'logo',
         configString,
       }),
-      episodeThumbnail: buildAiometadataPatternBlock({
-        baseUrl,
-        imageType: 'thumbnail',
-        configString,
-      }),
+      episodeThumbnail: episodePattern,
     };
   }, [
     baseUrl,
     configString,
+    aiometadataEpisodeProvider,
   ]);
 
   const updateRatingRowsForType = (
@@ -1241,6 +1245,8 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
       posterRatingsMaxPerSide,
       backdropRatingsLayout,
       thumbnailRatingsLayout,
+      aiometadataEpisodeProvider,
+      proxyAiometadataProvider,
       proxyManifestUrl,
       proxyEnabledTypes,
       translateMeta: proxyTranslateMeta,
@@ -1258,7 +1264,7 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     setTimeout(() => setExportStatus('idle'), 2000);
   };
 
-  const applyImportedConfig = (payload: Record<string, unknown>) => {
+  function applyImportedConfig(payload: Record<string, unknown>) {
     if (typeof payload.tmdbKey === 'string') {
       setTmdbKey(payload.tmdbKey);
     }
@@ -1325,6 +1331,9 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     if (typeof payload.thumbnailSize === 'string' && THUMBNAIL_SIZE_OPTIONS.some((option) => option.id === payload.thumbnailSize)) {
       setThumbnailSize(payload.thumbnailSize as ThumbnailSize);
     }
+    if (isAiometadataEpisodeProvider(payload.aiometadataEpisodeProvider)) {
+      setAiometadataEpisodeProvider(payload.aiometadataEpisodeProvider);
+    }
 
     if (payload.posterRatingsMaxPerSide === null) {
       setPosterRatingsMaxPerSide(null);
@@ -1386,6 +1395,9 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     if (typeof payload.proxyManifestUrl === 'string') {
       setProxyManifestUrl(normalizeManifestUrl(payload.proxyManifestUrl, true));
     }
+    if (isProxyEpisodeProvider(payload.proxyAiometadataProvider)) {
+      setProxyAiometadataProvider(payload.proxyAiometadataProvider);
+    }
     if (payload.proxyEnabledTypes && typeof payload.proxyEnabledTypes === 'object') {
       const enabled = payload.proxyEnabledTypes as Record<string, unknown>;
       setProxyEnabledTypes((current) => ({
@@ -1401,7 +1413,24 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
 
     setImportStatus('success');
     setImportMessage('Config loaded.');
-  };
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storedPreviewConfig = safeLocalStorageGet(PREVIEW_CONFIG_STORAGE_KEY);
+    if (!storedPreviewConfig) {
+      return;
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      try {
+        const parsed = JSON.parse(storedPreviewConfig) as Record<string, unknown>;
+        applyImportedConfig(parsed);
+      } catch {
+        safeLocalStorageRemove(PREVIEW_CONFIG_STORAGE_KEY);
+      }
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
 
   useEffect(() => {
     const payload: Record<string, unknown> = {
@@ -1429,6 +1458,8 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
       backdropRatingsLayout,
       thumbnailRatingsLayout,
       thumbnailSize,
+      aiometadataEpisodeProvider,
+      proxyAiometadataProvider,
       proxyManifestUrl,
       proxyEnabledTypes,
       translateMeta: proxyTranslateMeta,
@@ -1458,6 +1489,8 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
     backdropRatingsLayout,
     thumbnailRatingsLayout,
     thumbnailSize,
+    aiometadataEpisodeProvider,
+    proxyAiometadataProvider,
     proxyManifestUrl,
     proxyEnabledTypes,
     proxyTranslateMeta,
@@ -1608,6 +1641,8 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
       proxyCopied,
       copied,
       aiometadataCopiedType,
+      aiometadataEpisodeProvider,
+      proxyAiometadataProvider,
     },
     derived: {
       baseUrl,
@@ -1652,6 +1687,8 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
       setBackdropRatingsLayout,
       setThumbnailRatingsLayout,
       setThumbnailSize,
+      setAiometadataEpisodeProvider,
+      setProxyAiometadataProvider,
       setPosterQualityBadgesPosition,
       setQualityBadgesSide,
       setRatingStyleForType,

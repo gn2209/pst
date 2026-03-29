@@ -9,10 +9,12 @@ import { getMetadata, setMetadata } from './metadataCache';
 
 type DatasetPaths = {
   ratingsPath: string;
+  episodesPath: string;
 };
 
 type DatasetUrls = {
   ratingsUrl: string;
+  episodesUrl: string;
 };
 
 const parseBool = (value: string | undefined, fallback: boolean) => {
@@ -48,17 +50,23 @@ const IMPORT_MARKER_TTL_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
 const DATASET_BASE_URL = (process.env.ERDB_IMDB_DATASET_BASE_URL || 'https://datasets.imdbws.com').replace(/\/+$/, '');
 const RATINGS_URL = process.env.ERDB_IMDB_RATINGS_DATASET_URL || `${DATASET_BASE_URL}/title.ratings.tsv.gz`;
+const EPISODES_URL = process.env.ERDB_IMDB_EPISODES_DATASET_URL || `${DATASET_BASE_URL}/title.episode.tsv.gz`;
 
 const resolveDatasetPaths = (): DatasetPaths => {
   const ratingsPath =
     process.env.ERDB_IMDB_RATINGS_DATASET_PATH ||
     process.env.IMDB_RATINGS_DATASET_PATH ||
     join(process.cwd(), 'data', 'imdb', 'title.ratings.tsv.gz');
-  return { ratingsPath };
+  const episodesPath =
+    process.env.ERDB_IMDB_EPISODES_DATASET_PATH ||
+    process.env.IMDB_EPISODES_DATASET_PATH ||
+    join(process.cwd(), 'data', 'imdb', 'title.episode.tsv.gz');
+  return { ratingsPath, episodesPath };
 };
 
 const resolveDatasetUrls = (): DatasetUrls => ({
   ratingsUrl: RATINGS_URL,
+  episodesUrl: EPISODES_URL,
 });
 
 const getFileMtimeMs = (filePath: string) => {
@@ -185,6 +193,50 @@ const importRatings = async (filePath: string, batchSize: number, progressEvery:
   }
 };
 
+const importEpisodes = async (filePath: string, batchSize: number, progressEvery: number) => {
+  ensureDbInitialized();
+  const db = getDb();
+  const insertStmt = db.prepare(
+    'INSERT OR REPLACE INTO imdb_episodes (tconst, parent_tconst, season_number, episode_number) VALUES (?, ?, ?, ?)'
+  );
+  const insertBatch = db.transaction((rows: Array<[string, string, number | null, number | null]>) => {
+    for (const row of rows) {
+      insertStmt.run(row[0], row[1], row[2], row[3]);
+    }
+  });
+
+  const rl = createInterface({ input: openDatasetStream(filePath), crlfDelay: Infinity });
+  let batch: Array<[string, string, number | null, number | null]> = [];
+  let total = 0;
+
+  for await (const line of rl) {
+    if (!line || line.startsWith('tconst\t')) continue;
+    const [tconst, parentTconst, seasonRaw, episodeRaw] = line.split('\t');
+    if (!tconst || !parentTconst) continue;
+    const seasonNumber = seasonRaw === '\\N' ? null : Number(seasonRaw);
+    const episodeNumber = episodeRaw === '\\N' ? null : Number(episodeRaw);
+    batch.push([
+      tconst,
+      parentTconst,
+      Number.isFinite(seasonNumber) ? seasonNumber : null,
+      Number.isFinite(episodeNumber) ? episodeNumber : null,
+    ]);
+    if (batch.length >= batchSize) {
+      insertBatch(batch);
+      total += batch.length;
+      batch = [];
+      if (progressEvery > 0 && LOG_ENABLED && total % progressEvery === 0) {
+        console.log(`IMDb episodes imported: ${total.toLocaleString('en-US')}`);
+      }
+    }
+  }
+
+  if (batch.length) {
+    insertBatch(batch);
+    total += batch.length;
+  }
+};
+
 let syncInFlight: Promise<void> | null = null;
 let lastCheckAt = 0;
 
@@ -204,21 +256,31 @@ const runImdbDatasetSync = async () => {
   const urls = resolveDatasetUrls();
 
   const ratingsNeedsDownload = AUTO_DOWNLOAD && shouldDownloadFile(paths.ratingsPath);
+  const episodesNeedsDownload = AUTO_DOWNLOAD && shouldDownloadFile(paths.episodesPath);
 
   if (ratingsNeedsDownload) {
     await downloadToFile(urls.ratingsUrl, paths.ratingsPath);
+  }
+  if (episodesNeedsDownload) {
+    await downloadToFile(urls.episodesUrl, paths.episodesPath);
   }
 
   if (!AUTO_IMPORT) return;
 
   const ratingsMarker = 'imdb:dataset:imported:ratings';
+  const episodesMarker = 'imdb:dataset:imported:episodes';
   const importBatchSize = Math.max(1000, Number(process.env.ERDB_IMDB_DATASET_IMPORT_BATCH || 5000));
   const importProgress = Math.max(0, Number(process.env.ERDB_IMDB_DATASET_IMPORT_PROGRESS || 0));
 
   const shouldImportRatings = shouldImportDataset('imdb_ratings', ratingsMarker, paths.ratingsPath);
+  const shouldImportEpisodes = shouldImportDataset('imdb_episodes', episodesMarker, paths.episodesPath);
 
   if (shouldImportRatings && existsSync(paths.ratingsPath)) {
     await importRatings(paths.ratingsPath, importBatchSize, importProgress);
     setImportMarker(ratingsMarker, getFileMtimeMs(paths.ratingsPath) || Date.now());
+  }
+  if (shouldImportEpisodes && existsSync(paths.episodesPath)) {
+    await importEpisodes(paths.episodesPath, importBatchSize, importProgress);
+    setImportMarker(episodesMarker, getFileMtimeMs(paths.episodesPath) || Date.now());
   }
 };

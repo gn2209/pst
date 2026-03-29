@@ -11,6 +11,8 @@ const parseArgs = (argv) => {
     const arg = argv[i];
     if (arg === '--ratings') {
       args.ratings = argv[++i];
+    } else if (arg === '--episodes') {
+      args.episodes = argv[++i];
     } else if (arg === '--db') {
       args.db = argv[++i];
     } else if (arg === '--batch') {
@@ -21,6 +23,8 @@ const parseArgs = (argv) => {
       args.truncate = true;
     } else if (arg === '--skip-ratings') {
       args.skipRatings = true;
+    } else if (arg === '--skip-episodes') {
+      args.skipEpisodes = true;
     } else if (arg === '--help' || arg === '-h') {
       args.help = true;
     }
@@ -32,14 +36,15 @@ const printUsage = () => {
   console.log('IMDb dataset import');
   console.log('');
   console.log('Usage:');
-  console.log('  node scripts/imdb-import.js --ratings <path> [options]');
+  console.log('  node scripts/imdb-import.js --ratings <path> --episodes <path> [options]');
   console.log('');
   console.log('Options:');
   console.log('  --db <path>           SQLite DB path (default: ./data/erdb.db)');
   console.log('  --batch <n>           Batch size (default: 5000)');
   console.log('  --progress <n>        Progress interval in rows (default: 500000)');
   console.log('  --truncate            Clear existing imdb tables before import');
-  console.log('  --skip-ratings         Skip ratings import');
+  console.log('  --skip-ratings        Skip ratings import');
+  console.log('  --skip-episodes       Skip episodes import');
 };
 
 const args = parseArgs(process.argv.slice(2));
@@ -53,6 +58,10 @@ const ratingsPath =
   args.ratings ||
   process.env.ERDB_IMDB_RATINGS_DATASET_PATH ||
   path.join(cwd, 'data', 'imdb', 'title.ratings.tsv.gz');
+const episodesPath =
+  args.episodes ||
+  process.env.ERDB_IMDB_EPISODES_DATASET_PATH ||
+  path.join(cwd, 'data', 'imdb', 'title.episode.tsv.gz');
 const dbPath = args.db || path.join(cwd, 'data', 'erdb.db');
 const batchSize = Number(args.batch || 5000);
 const progressEvery = Number(args.progress || 500000);
@@ -66,6 +75,9 @@ const ensureFileExists = (filePath, label) => {
 
 if (!args.skipRatings) {
   ensureFileExists(ratingsPath, 'Ratings dataset');
+}
+if (!args.skipEpisodes) {
+  ensureFileExists(episodesPath, 'Episodes dataset');
 }
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -90,6 +102,14 @@ CREATE TABLE IF NOT EXISTS imdb_ratings (
   num_votes INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS imdb_ratings_votes_idx ON imdb_ratings (num_votes);
+
+CREATE TABLE IF NOT EXISTS imdb_episodes (
+  tconst TEXT PRIMARY KEY,
+  parent_tconst TEXT NOT NULL,
+  season_number INTEGER,
+  episode_number INTEGER
+);
+CREATE INDEX IF NOT EXISTS imdb_episodes_parent_idx ON imdb_episodes (parent_tconst, season_number, episode_number);
 `);
 
 const IMPORT_MARKER_TTL_MS = 10 * 365 * 24 * 60 * 60 * 1000;
@@ -106,6 +126,7 @@ const setImportMarker = (key, value) => {
 if (args.truncate) {
   console.log('Truncating imdb tables...');
   db.exec('DELETE FROM imdb_ratings;');
+  db.exec('DELETE FROM imdb_episodes;');
 }
 
 const openDatasetStream = (filePath) => {
@@ -156,9 +177,59 @@ const importRatings = async () => {
   setImportMarker('imdb:dataset:imported:ratings', Date.now());
 };
 
+const importEpisodes = async () => {
+  console.log(`Importing episodes from: ${episodesPath}`);
+  const insertStmt = db.prepare(
+    'INSERT OR REPLACE INTO imdb_episodes (tconst, parent_tconst, season_number, episode_number) VALUES (?, ?, ?, ?)'
+  );
+  const insertBatch = db.transaction((rows) => {
+    for (const row of rows) {
+      insertStmt.run(row[0], row[1], row[2], row[3]);
+    }
+  });
+
+  const rl = readline.createInterface({
+    input: openDatasetStream(episodesPath),
+    crlfDelay: Infinity,
+  });
+
+  let batch = [];
+  let total = 0;
+  for await (const line of rl) {
+    if (!line || line.startsWith('tconst\t')) continue;
+    const [tconst, parentTconst, seasonRaw, episodeRaw] = line.split('\t');
+    if (!tconst || !parentTconst) continue;
+    const seasonNumber = seasonRaw === '\\N' ? null : Number(seasonRaw);
+    const episodeNumber = episodeRaw === '\\N' ? null : Number(episodeRaw);
+    batch.push([
+      tconst,
+      parentTconst,
+      Number.isFinite(seasonNumber) ? seasonNumber : null,
+      Number.isFinite(episodeNumber) ? episodeNumber : null,
+    ]);
+    if (batch.length >= batchSize) {
+      insertBatch(batch);
+      total += batch.length;
+      batch = [];
+      if (total % progressEvery === 0) {
+        console.log(`Episodes imported: ${total.toLocaleString('en-US')}`);
+      }
+    }
+  }
+  if (batch.length) {
+    insertBatch(batch);
+    total += batch.length;
+  }
+  console.log(`Episodes imported: ${total.toLocaleString('en-US')}`);
+  setImportMarker('imdb:dataset:imported:episodes', Date.now());
+};
+
 const run = async () => {
   if (!args.skipRatings) {
     await importRatings();
+  }
+  if (!args.skipEpisodes) {
+    await importEpisodes();
   }
   console.log('IMDb import completed.');
 };

@@ -22,6 +22,15 @@ CREATE TABLE IF NOT EXISTS imdb_ratings (
 );
 
 CREATE INDEX IF NOT EXISTS imdb_ratings_votes_idx ON imdb_ratings (num_votes);
+
+CREATE TABLE IF NOT EXISTS imdb_episodes (
+  tconst TEXT PRIMARY KEY,
+  parent_tconst TEXT NOT NULL,
+  season_number INTEGER,
+  episode_number INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS imdb_episodes_parent_idx ON imdb_episodes (parent_tconst, season_number, episode_number);
 `;
 
 type GlobalDbState = typeof globalThis & {

@@ -57,6 +57,8 @@ type StreamBadgesSetting = 'auto' | 'on' | 'off';
 type QualityBadgesSide = 'left' | 'right';
 type PosterQualityBadgesPosition = 'auto' | QualityBadgesSide;
 type AiometadataPatternType = 'poster' | 'background' | 'logo' | 'episodeThumbnail';
+type AiometadataEpisodeProvider = 'tvdb' | 'realimdb';
+type ProxyEpisodeProvider = 'tmdb' | 'tvdb' | 'realimdb';
 
 type HomePageViewState = {
   previewType: PreviewType;
@@ -67,6 +69,7 @@ type HomePageViewState = {
   mdblistKey: string;
   simklClientId: string;
   proxyManifestUrl: string;
+  proxyAiometadataProvider: ProxyEpisodeProvider;
   proxyEnabledTypes: ProxyEnabledTypes;
   proxyTranslateMeta: boolean;
   exportStatus: 'idle' | 'with' | 'without';
@@ -83,6 +86,7 @@ type HomePageViewState = {
   proxyCopied: boolean;
   copied: boolean;
   aiometadataCopiedType: AiometadataPatternType | null;
+  aiometadataEpisodeProvider: AiometadataEpisodeProvider;
 };
 
 type HomePageViewDerived = {
@@ -129,6 +133,8 @@ type HomePageViewActions = {
   setBackdropRatingsLayout: Dispatch<SetStateAction<BackdropRatingLayout>>;
   setThumbnailRatingsLayout: Dispatch<SetStateAction<ThumbnailRatingLayout>>;
   setThumbnailSize: Dispatch<SetStateAction<ThumbnailSize>>;
+  setAiometadataEpisodeProvider: Dispatch<SetStateAction<AiometadataEpisodeProvider>>;
+  setProxyAiometadataProvider: Dispatch<SetStateAction<ProxyEpisodeProvider>>;
   setPosterQualityBadgesPosition: Dispatch<SetStateAction<PosterQualityBadgesPosition>>;
   setQualityBadgesSide: Dispatch<SetStateAction<QualityBadgesSide>>;
   setRatingStyleForType: (value: RatingStyle) => void;
@@ -171,6 +177,15 @@ const POSTER_QUALITY_BADGE_POSITION_OPTIONS: Array<{
   { id: 'left', label: 'Left' },
   { id: 'right', label: 'Right' },
 ];
+const AIOMETADATA_EPISODE_PROVIDER_OPTIONS: Array<{ id: AiometadataEpisodeProvider; label: string }> = [
+  { id: 'realimdb', label: 'IMDb' },
+  { id: 'tvdb', label: 'TVDB' },
+];
+const PROXY_EPISODE_PROVIDER_OPTIONS: Array<{ id: ProxyEpisodeProvider; label: string }> = [
+  { id: 'tmdb', label: 'TMDb' },
+  { id: 'tvdb', label: 'TVDB' },
+  { id: 'realimdb', label: 'IMDb' },
+];
 
 export function HomePageView({ refs, state, derived, actions }: HomePageViewProps) {
   const { navRef } = refs;
@@ -183,6 +198,7 @@ export function HomePageView({ refs, state, derived, actions }: HomePageViewProp
     mdblistKey,
     simklClientId,
     proxyManifestUrl,
+    proxyAiometadataProvider,
     proxyEnabledTypes,
     proxyTranslateMeta,
     exportStatus,
@@ -199,6 +215,7 @@ export function HomePageView({ refs, state, derived, actions }: HomePageViewProp
     proxyCopied,
     copied,
     aiometadataCopiedType,
+    aiometadataEpisodeProvider,
   } = state;
   const {
     baseUrl,
@@ -243,6 +260,8 @@ export function HomePageView({ refs, state, derived, actions }: HomePageViewProp
     setBackdropRatingsLayout,
     setThumbnailRatingsLayout,
     setThumbnailSize,
+    setAiometadataEpisodeProvider,
+    setProxyAiometadataProvider,
     setPosterQualityBadgesPosition,
     setQualityBadgesSide,
     setRatingStyleForType,
@@ -746,6 +765,26 @@ export function HomePageView({ refs, state, derived, actions }: HomePageViewProp
                       className="w-full bg-[#080b10] border border-white/10 rounded-lg px-2.5 py-2 text-xs text-white focus:border-orange-500/50 outline-none"
                     />
                   </div>
+                  {proxyManifestUrl.toLowerCase().includes('aiometadata') && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-slate-500">The proxy cannot reliably distinguish AIOMetadata series from anime in every case, so use the same provider for both when proxying this addon.</p>
+                      <div>
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 block mb-1.5">AiOMetadata Series/Anime Provider</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {PROXY_EPISODE_PROVIDER_OPTIONS.map((option) => (
+                            <button
+                              key={`proxy-provider-${option.id}`}
+                              type="button"
+                              onClick={() => setProxyAiometadataProvider(option.id)}
+                              className={`rounded-lg border px-2 py-1.5 text-[11px] font-medium transition-colors ${proxyAiometadataProvider === option.id ? 'border-orange-500/60 bg-[#141b26] text-white' : 'border-white/10 bg-[#0b0f15] text-slate-400 hover:text-white'}`}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 block mb-1.5">Enabled Types</span>
                     <div className="flex flex-wrap gap-1.5">
@@ -845,7 +884,21 @@ export function HomePageView({ refs, state, derived, actions }: HomePageViewProp
                 <Terminal className="w-5 h-5 text-orange-500" /> Aiometadata Patterns
               </h3>
             </div>
-            <p className="mt-2 text-sm text-slate-400 max-w-3xl">Copy these URL patterns directly into aiometadata. Use TMDB IDs in the form `tmdb:{'{type}'}:{'{tmdb_id}'}` and `tmdb:{'{type}'}:{'{tmdb_id}'}:{'{season}'}:{'{episode}'}` for episode thumbnails.</p>
+            <p className="mt-2 text-sm text-slate-400 max-w-3xl">Choose whether AiOMetadata episode IDs should use `IMDb` or `TVDB`. Series and anime should use the same provider here. For anime, AiOMetadata may send a Kitsu ID in the season slot when TVDB mapping fails, so TVDB thumbnails can still be incorrect.</p>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-[#080b10]/90 p-3">
+              <div className="text-[11px] font-semibold text-slate-400">AiOMetadata Series/Anime Provider</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {AIOMETADATA_EPISODE_PROVIDER_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    onClick={() => setAiometadataEpisodeProvider(option.id)}
+                    className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors ${aiometadataEpisodeProvider === option.id ? 'border-orange-500/60 bg-[#141b26] text-white' : 'border-white/10 bg-[#0b0f15] text-slate-400 hover:text-white'}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-3">
               {([
                 ['poster', 'Poster URL Pattern'],

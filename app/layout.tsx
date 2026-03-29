@@ -1,6 +1,7 @@
 import type {Metadata} from 'next';
 import {connection} from 'next/server';
 import {Space_Grotesk, Unbounded} from 'next/font/google';
+import { scheduleImdbDatasetSync } from '@/lib/imdbDatasetSync';
 import './globals.css'; // Global styles
 
 export const metadata: Metadata = {
@@ -22,6 +23,7 @@ const displayFont = Unbounded({
 
 export default async function RootLayout({children}: {children: React.ReactNode}) {
   await connection();
+  scheduleImdbDatasetSync();
 
   return (
     <html lang="en">
