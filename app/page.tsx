@@ -76,7 +76,7 @@ type PreviewType = (typeof PREVIEW_TYPES)[number];
 type ProxyEnabledTypes = Record<ProxyType, boolean>;
 type AiometadataPatternType = 'poster' | 'background' | 'logo' | 'episodeThumbnail';
 type AiometadataEpisodeProvider = 'tvdb' | 'realimdb';
-type ProxyEpisodeProvider = 'tmdb' | 'tvdb' | 'realimdb';
+type ProxyEpisodeProvider = 'custom' | 'realimdb';
 type StreamBadgesSetting = 'auto' | 'on' | 'off';
 type QualityBadgesSide = 'left' | 'right';
 type PosterQualityBadgesPosition = 'auto' | QualityBadgesSide;
@@ -128,7 +128,7 @@ const isBackdropRatingLayout = (value: unknown): value is BackdropRatingLayout =
 const isThumbnailRatingLayout = (value: unknown): value is ThumbnailRatingLayout =>
   THUMBNAIL_RATING_LAYOUT_OPTIONS.some((option) => option.id === value);
 const isProxyEpisodeProvider = (value: unknown): value is ProxyEpisodeProvider =>
-  value === 'tmdb' || value === 'tvdb' || value === 'realimdb';
+  value === 'custom' || value === 'realimdb';
 const isAiometadataEpisodeProvider = (value: unknown): value is AiometadataEpisodeProvider =>
   value === 'tvdb' || value === 'realimdb';
 
@@ -499,7 +499,7 @@ export default function Home() {
   const [tmdbKey, setTmdbKey] = useState('');
   const [simklClientId, setSimklClientId] = useState('');
   const [proxyManifestUrl, setProxyManifestUrl] = useState('');
-  const [proxyAiometadataProvider, setProxyAiometadataProvider] = useState<ProxyEpisodeProvider>('tmdb');
+  const [proxyAiometadataProvider, setProxyAiometadataProvider] = useState<ProxyEpisodeProvider>('custom');
   const [proxyEnabledTypes, setProxyEnabledTypes] = useState<ProxyEnabledTypes>({
     poster: true,
     backdrop: true,
@@ -513,6 +513,9 @@ export default function Home() {
   const [showProxyUrl, setShowProxyUrl] = useState(false);
   const [aiometadataCopiedType, setAiometadataCopiedType] = useState<AiometadataPatternType | null>(null);
   const [aiometadataEpisodeProvider, setAiometadataEpisodeProvider] = useState<AiometadataEpisodeProvider>('realimdb');
+  const [currentVersion, setCurrentVersion] = useState('0.1.0');
+  const [githubPackageVersion, setGithubPackageVersion] = useState<string | null>(null);
+  const [repoUrl, setRepoUrl] = useState<string | null>(null);
   const [exportStatus, setExportStatus] = useState<'idle' | 'with' | 'without'>('idle');
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [importMessage, setImportMessage] = useState('');
@@ -587,6 +590,31 @@ export default function Home() {
       safeLocalStorageRemove(SIMKL_CLIENT_ID_STORAGE_KEY);
     }
   }, [simklClientId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/version', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return await response.json();
+      })
+      .then((payload) => {
+        if (cancelled || !payload || typeof payload !== 'object') return;
+        if (typeof payload.currentVersion === 'string' && payload.currentVersion) {
+          setCurrentVersion(payload.currentVersion);
+        }
+        if (typeof payload.githubPackageVersion === 'string' && payload.githubPackageVersion) {
+          setGithubPackageVersion(payload.githubPackageVersion);
+        }
+        if (typeof payload.repoUrl === 'string' && payload.repoUrl) {
+          setRepoUrl(payload.repoUrl);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const scrollToHash = useCallback((hash: string, behavior: ScrollBehavior = 'smooth') => {
     if (typeof window === 'undefined') return;
@@ -1648,6 +1676,9 @@ Skip any params that are undefined. Keep empty ratings/posterRatings/backdropRat
       baseUrl,
     previewUrl,
     proxyUrl,
+      currentVersion,
+      githubPackageVersion,
+      repoUrl,
       previewNotice,
     canGenerateConfig,
       canGenerateProxy,

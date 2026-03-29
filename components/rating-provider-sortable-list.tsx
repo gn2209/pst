@@ -20,7 +20,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RATING_PROVIDER_OPTIONS, type RatingPreference } from '@/lib/ratingPreferences';
 import type { RatingProviderRow } from '@/lib/ratingRows';
@@ -30,6 +30,7 @@ export type RatingProviderSortableListProps = {
   onReorder: (fromIndex: number, toIndex: number) => void;
   onToggle: (id: RatingPreference) => void;
   fillDirection?: 'row' | 'column';
+  singleColumnOnMobile?: boolean;
 };
 
 const dropAnimation = {
@@ -139,18 +140,30 @@ export function RatingProviderSortableList({
   onReorder,
   onToggle,
   fillDirection = 'row',
+  singleColumnOnMobile = false,
 }: RatingProviderSortableListProps) {
   const [activeId, setActiveId] = useState<RatingPreference | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
   const overlayRoot = typeof document === 'undefined' ? null : document.body;
   const itemIds = useMemo(() => rows.map((r) => r.id), [rows]);
   const rowCount = Math.max(1, Math.ceil(rows.length / 2));
+  const shouldUseSingleColumn = singleColumnOnMobile && isMobile;
   const listStyle =
-    fillDirection === 'column'
+    fillDirection === 'column' && !shouldUseSingleColumn
       ? {
           gridAutoFlow: 'column' as const,
           gridTemplateRows: `repeat(${rowCount}, auto)`,
         }
       : undefined;
+
+  useEffect(() => {
+    if (!singleColumnOnMobile || typeof window === 'undefined') return;
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const handleChange = () => setIsMobile(mediaQuery.matches);
+    handleChange();
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [singleColumnOnMobile]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -191,7 +204,9 @@ export function RatingProviderSortableList({
     >
       <SortableContext items={itemIds} strategy={rectSortingStrategy}>
         <ul
-          className="grid grid-cols-2 gap-x-3 gap-y-1.5 max-h-[min(22rem,55vh)] overflow-y-auto pr-0.5 [touch-action:pan-y]"
+          className={`grid gap-x-3 gap-y-1.5 max-h-[min(22rem,55vh)] overflow-y-auto pr-0.5 [touch-action:pan-y] ${
+            shouldUseSingleColumn ? 'grid-cols-1' : 'grid-cols-2'
+          }`}
           style={listStyle}
         >
           {rows.map((row, index) => (

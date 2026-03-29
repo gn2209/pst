@@ -482,8 +482,7 @@ const applyConfiguredEpisodeProvider = (
   provider: string | undefined
 ) => {
   if (!provider) return normalized;
-  if (provider === 'tmdb') return normalized;
-  if (provider === 'tvdb' && /^tvdb:/i.test(normalized)) return normalized;
+  if (provider === 'custom') return normalized;
   if (provider === 'realimdb' && /^tt\d+$/i.test(normalized)) return `realimdb:${normalized}`;
   return normalized;
 };
